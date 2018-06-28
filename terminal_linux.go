@@ -9,6 +9,12 @@ package logrus
 
 import "golang.org/x/sys/unix"
 
+import "syscall"
+
 const ioctlReadTermios = unix.TCGETS
 
 type Termios unix.Termios
+
+func GetCurrentThreadId() int {
+	return syscall.Gettid()
+}
