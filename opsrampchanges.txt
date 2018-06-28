@@ -1,0 +1,138 @@
+Change 1:
+Following lines to be added inside func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {} in text_formatter.go
+		f.appendKeyValue(b, "process ID", strconv.Itoa(syscall.Getpid()))
+		f.appendKeyValue(b, "thread ID", strconv.Itoa(GetCurrentThreadId()))
+		f.appendKeyValue(b, "OS", detectOS())
+
+
+			if key == "source_file" {
+				n := strings.LastIndexByte(entry.Data[key].(string), '/')
+				f.appendKeyValue(b, key, entry.Data[key].(string)[n+1:])
+			} else {
+
+			}
+
+--------------------------------------------
+Note: It must be in the following order to get our customise logs inside func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {} in text_formatter.go
+
+		f.appendKeyValue(b, "level", entry.Level.String())
+		f.appendKeyValue(b, "process ID", strconv.Itoa(syscall.Getpid()))
+		f.appendKeyValue(b, "thread ID", strconv.Itoa(GetCurrentThreadId()))
+		f.appendKeyValue(b, "OS", detectOS())
+		for _, key := range keys {
+			if key == "source_file" {
+				n := strings.LastIndexByte(entry.Data[key].(string), '/')
+				f.appendKeyValue(b, key, entry.Data[key].(string)[n+1:])
+			} else {
+				f.appendKeyValue(b, key, entry.Data[key])
+			}
+		}
+		if entry.Message != "" {
+			f.appendKeyValue(b, "msg", entry.Message)
+		}
+
+which print logs in order like
+22-06-2018 07:27:57 [debug] [pid 7202] [tid 7206] [L] [connectivity:676] Sending Heart Beat message...! 
+
+
+Change 2:
+Replace existing function appendKeyValue() definition as shown below
+func (f *TextFormatter) appendKeyValue(b *bytes.Buffer, key string, value interface{}) {
+
+	switch value := value.(type) {
+	case string:
+		if key == "time" {
+			arrstr := strings.Split(value, "T")
+			arr := strings.Split(arrstr[0], "-")
+			for i := len(arr) - 1; i >= 0; i-- {
+				if i == 0 {
+					fmt.Fprintf(b, "%s ", arr[i])
+					break
+				}
+				fmt.Fprintf(b, "%s"+"-", arr[i])
+			}
+			time := arrstr[1]
+			fmt.Fprintf(b, "%s", time[:8])
+			break
+		} else if key == "level" {
+			fmt.Fprintf(b, "[%s]", value)
+			break
+		} else if key == "process ID" {
+			fmt.Fprintf(b, "[pid %s]", value)
+			break
+		} else if key == "thread ID" {
+			fmt.Fprintf(b, "[tid %s]", value)
+			break
+		} else if key == "OS" {
+			fmt.Fprintf(b, "[%s]", value)
+			break
+		} else if key == "msg" {
+			fmt.Fprintf(b, "%s", value)
+			break
+		} else if key == "source_file" {
+			fmt.Fprintf(b, "[%s]", strings.Replace(value, ".go", "", -1))
+			break
+		}
+		fmt.Fprintf(b, "%s", value)
+	case error:
+		errmsg := value.Error()
+		if !f.needsQuoting(errmsg) {
+			b.WriteString(errmsg)
+		} else {
+			fmt.Fprintf(b, "%q", errmsg)
+		}
+	default:
+		fmt.Fprint(b, value)
+	}
+
+	b.WriteByte(' ')
+}
+
+
+Change 3:
+Add the below function definition in text_formatter.go
+func detectOS() string {
+	switch osplatform := runtime.GOOS; osplatform {
+	case "windows":
+		return "W"
+	case "darwin":
+		return "M"
+	default:
+		return "L"
+	}
+
+}
+
+
+Change 4:
+Place the termical_windows.go file in same directory for getting thread ID.
+
+
+Change 5:
+Create copy of terminal_bsd.go and rename to termical_darwin.go
+Remove darwin in the +build comment section in terminal_bsd.go
+Keep +build darwin comment section in termical_darwin.go
+copy below function definition in termical_darwin.go
+func GetCurrentThreadId() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+	id, err := strconv.Atoi(idField)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+Place the termical_darwin.go file in same directory
+
+
+Change 6:
+copy below function definition in terminal_linux.go, terminal_bsd.go
+func GetCurrentThreadId() int {
+	return syscall.Gettid()
+}
+
+
+Change 7:
+In latest logrus version sourcefile folder is removed and since agent importing github.com/Sirupsen/logrus/hooks/sourcefile for loglevel and filename we need to maintain this package.
+
