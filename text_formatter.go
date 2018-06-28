@@ -7,6 +7,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"runtime"
+	"strconv"
+	"syscall"
 )
 
 const (
@@ -110,19 +113,41 @@ func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {
 		f.printColored(b, entry, keys, timestampFormat)
 	} else {
 		if !f.DisableTimestamp {
-			f.appendKeyValue(b, f.FieldMap.resolve(FieldKeyTime), entry.Time.Format(timestampFormat))
+			f.appendKeyValue(b, "time", entry.Time.Format(timestampFormat))
 		}
 		f.appendKeyValue(b, f.FieldMap.resolve(FieldKeyLevel), entry.Level.String())
+		f.appendKeyValue(b, "process ID", strconv.Itoa(syscall.Getpid()))
+		f.appendKeyValue(b, "thread ID", strconv.Itoa(GetCurrentThreadId()))
+		f.appendKeyValue(b, "OS", detectOS())
+		
+		for _, key := range keys {
+			if key == "source_file" {
+				n := strings.LastIndexByte(entry.Data[key].(string), '/')
+				f.appendKeyValue(b, key, entry.Data[key].(string)[n+1:])
+			} else {
+				f.appendKeyValue(b, key, entry.Data[key])
+			}
+		}
+		
 		if entry.Message != "" {
 			f.appendKeyValue(b, f.FieldMap.resolve(FieldKeyMsg), entry.Message)
-		}
-		for _, key := range keys {
-			f.appendKeyValue(b, key, entry.Data[key])
 		}
 	}
 
 	b.WriteByte('\n')
 	return b.Bytes(), nil
+}
+
+func detectOS() string {
+	switch osplatform := runtime.GOOS; osplatform {
+	case "windows":
+		return "W"
+	case "darwin":
+		return "M"
+	default:
+		return "L"
+	}
+
 }
 
 func (f *TextFormatter) printColored(b *bytes.Buffer, entry *Entry, keys []string, timestampFormat string) {
@@ -173,12 +198,53 @@ func (f *TextFormatter) needsQuoting(text string) bool {
 }
 
 func (f *TextFormatter) appendKeyValue(b *bytes.Buffer, key string, value interface{}) {
-	if b.Len() > 0 {
-		b.WriteByte(' ')
+	switch value := value.(type) {
+	case string:
+		if key == "time" {
+			arrstr := strings.Split(value, "T")
+			arr := strings.Split(arrstr[0], "-")
+			for i := len(arr) - 1; i >= 0; i-- {
+				if i == 0 {
+					fmt.Fprintf(b, "%s ", arr[i])
+					break
+				}
+				fmt.Fprintf(b, "%s"+"-", arr[i])
+			}
+			time := arrstr[1]
+			fmt.Fprintf(b, "%s", time[:8])
+			break
+		} else if key == "level" {
+			fmt.Fprintf(b, "[%s]", value)
+			break
+		} else if key == "process ID" {
+			fmt.Fprintf(b, "[pid %s]", value)
+			break
+		} else if key == "thread ID" {
+			fmt.Fprintf(b, "[tid %s]", value)
+			break
+		} else if key == "OS" {
+			fmt.Fprintf(b, "[%s]", value)
+			break
+		} else if key == "msg" {
+			fmt.Fprintf(b, "%s", value)
+			break
+		} else if key == "source_file" {
+			fmt.Fprintf(b, "[%s]", strings.Replace(value, ".go", "", -1))
+			break
+		}
+		fmt.Fprintf(b, "%s", value)
+	case error:
+		errmsg := value.Error()
+		if !f.needsQuoting(errmsg) {
+			b.WriteString(errmsg)
+		} else {
+			fmt.Fprintf(b, "%q", errmsg)
+		}
+	default:
+		fmt.Fprint(b, value)
 	}
-	b.WriteString(key)
-	b.WriteByte('=')
-	f.appendValue(b, value)
+
+	b.WriteByte(' ')
 }
 
 func (f *TextFormatter) appendValue(b *bytes.Buffer, value interface{}) {
