@@ -1,5 +1,9 @@
 Change 1:
+Import “runtime”
+Import “strconv”
+Import “syscall”
 Following lines to be added inside func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {} in text_formatter.go
+		f.appendKeyValue(b, "time", entry.Time.Format(timestampFormat))
 		f.appendKeyValue(b, "process ID", strconv.Itoa(syscall.Getpid()))
 		f.appendKeyValue(b, "thread ID", strconv.Itoa(GetCurrentThreadId()))
 		f.appendKeyValue(b, "OS", detectOS())
@@ -15,6 +19,7 @@ Following lines to be added inside func (f *TextFormatter) Format(entry *Entry) 
 --------------------------------------------
 Note: It must be in the following order to get our customise logs inside func (f *TextFormatter) Format(entry *Entry) ([]byte, error) {} in text_formatter.go
 
+		f.appendKeyValue(b, "time", entry.Time.Format(timestampFormat))
 		f.appendKeyValue(b, "level", entry.Level.String())
 		f.appendKeyValue(b, "process ID", strconv.Itoa(syscall.Getpid()))
 		f.appendKeyValue(b, "thread ID", strconv.Itoa(GetCurrentThreadId()))
@@ -113,6 +118,11 @@ Create copy of terminal_bsd.go and rename to termical_darwin.go
 Remove darwin in the +build comment section in terminal_bsd.go
 Keep +build darwin comment section in termical_darwin.go
 copy below function definition in termical_darwin.go
+
+Import “runtime”
+Import “strconv”
+Import “string”
+
 func GetCurrentThreadId() int {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
@@ -128,6 +138,7 @@ Place the termical_darwin.go file in same directory
 
 Change 6:
 copy below function definition in terminal_linux.go, terminal_bsd.go
+Import “syscall”
 func GetCurrentThreadId() int {
 	return syscall.Gettid()
 }
