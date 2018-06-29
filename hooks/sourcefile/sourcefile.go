@@ -2,7 +2,7 @@ package logrus_sourcefile
 
 import (
 	"fmt"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"runtime"
 	"strings"
 )
